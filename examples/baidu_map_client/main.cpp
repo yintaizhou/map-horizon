@@ -24,7 +24,8 @@ using json = nlohmann::json;
 typedef websocketpp::config::asio_client::message_type::ptr message_ptr;
 typedef client::connection_ptr connection_ptr;
 
-const std::string AK = "E4805d16520de693a3fe707cdc962045";
+const std::string AK = "您的ak";
+const std::string URI = "ws://apitest.map.baidu.com/websocket";
 
 // 使用websocketpp实现一个Client
 class WebsocketClient {
@@ -42,7 +43,7 @@ public:
         m_endpoint.set_open_handler(bind(&WebsocketClient::on_open,this,::_1));
         m_endpoint.set_close_handler(bind(&WebsocketClient::on_close,this,::_1));
         m_endpoint.set_fail_handler(bind(&WebsocketClient::on_fail,this,::_1));
- 
+
     }
 
     ~WebsocketClient() {}
@@ -72,7 +73,7 @@ public:
     // @param message 要发送的json字符串
     void send(std::string message) {
         // 检查连接是否鉴权通过
-        if (!_init_flag) {
+        if (!_init_flag.load()) {
             std::cout << "connection not established, ignore this message" << std::endl;
             return;
         }
@@ -85,7 +86,9 @@ public:
             return;
         }
 
-        m_endpoint.send(m_hdl, message, websocketpp::frame::opcode::text);
+        ::websocketpp::lib::error_code ec;
+
+        m_endpoint.send(m_hdl, message, websocketpp::frame::opcode::text, ec);
     }
 
     // @brief webscoket回调函数，socket初始化完成回调
@@ -152,8 +155,9 @@ public:
     }
 
     // @brief webscoket回调函数，连接关闭回调
-    void on_close(websocketpp::connection_hdl) {
+    void on_close(websocketpp::connection_hdl hdl) {
         _init_flag = false;
+        m_endpoint.close(hdl, websocketpp::close::status::abnormal_close, "connection close");
         std::cout << "close connection" << std::endl;
     }
 
@@ -240,32 +244,25 @@ void gps_worker(std::weak_ptr<WebsocketClient> client) {
         j["data"] = data;
 
         std::string message = j.dump();
-        std::cout << "send " << message << std::endl;
 
         // 向服务端上报位置
         if (!client.expired()) {
             client.lock()->send(message);
+            std::cout << "send " << message << std::endl;
+        } else {
+            std::cout << "endpoint expired" << std::endl;
         }
 
         sleep(1);
     }
 }
 
-int main(int argc, char* argv[]) {
+void client_worker(std::shared_ptr<WebsocketClient> endpoint_ptr) {
     // 设置百度地图巡航服务地址
-    std::string uri = "ws://apitest.map.baidu.com/websocket";
+    std::string uri = URI;
 
-    // 创建一个WebsocketClient对象 
-    std::shared_ptr<WebsocketClient> endpoint_ptr;
-    std::weak_ptr<WebsocketClient> endpoint(endpoint_ptr);
-
-    // 启动获取GPS数据的线程
-    std::thread t(gps_worker, endpoint);
-    
     while (true) {
         try {
-            endpoint_ptr = std::make_shared<WebsocketClient>();
-
             // 启动WebsocketClient
             endpoint_ptr->start(uri);
 
@@ -277,11 +274,26 @@ int main(int argc, char* argv[]) {
             std::cout << "other exception" << std::endl;
         }
 
-        sleep(5);
         std::cout << "retry connect to baidu service, wait 5 sec" << std::endl;
+        sleep(5);
     }
+}
 
-    t.join();
+int main(int argc, char* argv[]) {
+    // 创建一个WebsocketClient对象 
+    std::shared_ptr<WebsocketClient> endpoint_ptr;
+    endpoint_ptr = std::make_shared<WebsocketClient>();
+    std::weak_ptr<WebsocketClient> w_endpoint_ptr(endpoint_ptr);
+
+    // 启动获取GPS数据的线程
+    std::thread gps_thread(gps_worker, w_endpoint_ptr);
+
+    // 启动websocket client线程
+    std::thread client_thread(client_worker, endpoint_ptr);
+    
+    // join线程
+    gps_thread.join();
+    client_thread.join();
 
     return 0;
 }
