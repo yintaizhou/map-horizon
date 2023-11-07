@@ -38,7 +38,6 @@ public:
         m_endpoint.init_asio();
 
         // 注册事件处理的回调
-        m_endpoint.set_socket_init_handler(bind(&WebsocketClient::on_socket_init,this,::_1));
         m_endpoint.set_message_handler(bind(&WebsocketClient::on_message,this,::_1,::_2));
         m_endpoint.set_open_handler(bind(&WebsocketClient::on_open,this,::_1));
         m_endpoint.set_close_handler(bind(&WebsocketClient::on_close,this,::_1));
@@ -50,23 +49,28 @@ public:
     
     // @brief 启动websocket客户端
     // @param uri 建立连接的服务端地址
-    void start(std::string uri) {
+    void start() {
         // 建立连接
         websocketpp::lib::error_code ec;
-        client::connection_ptr con = m_endpoint.get_connection(uri, ec);
+        client::connection_ptr con = m_endpoint.get_connection(URI, ec);
 
-        // 处理连接失败的情况
+        // 获取连接，此处不会真正连接服务端，只是获取一个连接实例
         if (ec) {
-            std::cout << "WebsocketClient start failed: " << ec.message() << std::endl;
+            std::cout << "websocket get connection failed: " << ec.message() << std::endl;
             return;
         }
 
-        m_endpoint.connect(con);
+        con = m_endpoint.connect(con);
 
         m_hdl = con->get_handle();
 
+        // 在run之前无法判断连接是否成功
+        // 如果连接失败，run会退出，否则run会一直阻塞
         // 启动客户端
         m_endpoint.run();
+
+        // run失败了，重置下endpoint用于重连
+        m_endpoint.reset();
     }
 
     // @brief 发送消息到服务端，主要用于上报位置
@@ -91,10 +95,6 @@ public:
         m_endpoint.send(m_hdl, message, websocketpp::frame::opcode::text, ec);
     }
 
-    // @brief webscoket回调函数，socket初始化完成回调
-    void on_socket_init(websocketpp::connection_hdl) {
-        std::cout << "socket init succces" << std::endl;
-    }
 
     // @brief webscoket回调函数，消息或接收失败回调
     void on_fail(websocketpp::connection_hdl hdl) {
@@ -169,6 +169,7 @@ private:
 
         // 返回的是鉴权结果，判断鉴权结果是否成功
         if (j["qt"] == "auth" && j["data"]["status"] == 0) {
+            // 鉴权成功后将初始化标识位置为true，此时可以进行位置数据的上报了
             _init_flag = true;
             return;
         }
@@ -248,7 +249,7 @@ void gps_worker(std::weak_ptr<WebsocketClient> client) {
         // 向服务端上报位置
         if (!client.expired()) {
             client.lock()->send(message);
-            std::cout << "send " << message << std::endl;
+            // std::cout << "send " << message << std::endl;
         } else {
             std::cout << "endpoint expired" << std::endl;
         }
@@ -258,13 +259,10 @@ void gps_worker(std::weak_ptr<WebsocketClient> client) {
 }
 
 void client_worker(std::shared_ptr<WebsocketClient> endpoint_ptr) {
-    // 设置百度地图巡航服务地址
-    std::string uri = URI;
-
     while (true) {
         try {
             // 启动WebsocketClient
-            endpoint_ptr->start(uri);
+            endpoint_ptr->start();
 
         } catch (websocketpp::exception const & e) {
             std::cout << e.what() << std::endl;
