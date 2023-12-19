@@ -24,7 +24,7 @@ using json = nlohmann::json;
 typedef websocketpp::config::asio_client::message_type::ptr message_ptr;
 typedef client::connection_ptr connection_ptr;
 
-const std::string AK = "您的ak";
+const std::string AK = "您对ak";
 const std::string URI = "ws://apitest.map.baidu.com/websocket";
 
 // 使用websocketpp实现一个Client
@@ -129,7 +129,7 @@ public:
         data["ak"] = AK;
         // entity_id是每个终端对唯一标识，服务端会根据此id建立服务端对ssesion
         // 如果两个终端的entity_id重复，后上线对终端会将之前的踢下线
-        data["entity_id"] = 345678;  
+        data["entity_id"] = "abcdefg";  
 
         j["data"] = data;  
 
@@ -198,7 +198,7 @@ private:
 
 void gps_worker(std::weak_ptr<WebsocketClient> client) {
     std::cout << "start gps_worker" << std::endl;
-
+    
     // 假设gps坐标已经录制好，并存放在case.csv文件中
     // 从case.csv文件读取坐标并进行回放
     std::ifstream in_loc_stream("case.csv");
@@ -279,8 +279,7 @@ void client_worker(std::shared_ptr<WebsocketClient> endpoint_ptr) {
 
 int main(int argc, char* argv[]) {
     // 创建一个WebsocketClient对象 
-    std::shared_ptr<WebsocketClient> endpoint_ptr;
-    endpoint_ptr = std::make_shared<WebsocketClient>();
+    std::shared_ptr<WebsocketClient> endpoint_ptr = std::make_shared<WebsocketClient>();
     std::weak_ptr<WebsocketClient> w_endpoint_ptr(endpoint_ptr);
 
     // 启动获取GPS数据的线程
