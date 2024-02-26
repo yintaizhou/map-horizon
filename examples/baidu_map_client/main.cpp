@@ -24,13 +24,26 @@ using json = nlohmann::json;
 typedef websocketpp::config::asio_client::message_type::ptr message_ptr;
 typedef client::connection_ptr connection_ptr;
 
-const std::string AK = "您对ak";
-const std::string URI = "ws://apitest.map.baidu.com/websocket";
+const std::string AK = "您的ak";
+const std::string URI = "wss://apitest.map.baidu.com/websocket";
+
+// 传入客户端设备对唯一标识
+std::string ENTITY_ID = "yintaizhou";
+
+// 执行的case名称，例如当case名称为【shanghai_gaosu】时
+// 对应的轨迹点文件【shanghai_gaosu_case】
+// 对应的导航路线文件【shanghai_gaosu_route】
+std::string CASE = "shanghai_gaosu";
+
+// 配置模式，当传入路线时，探路会沿着导航路线进行
+int ROUTE_TYPE = 2; // 1 巡航，2 导航
 
 // 使用websocketpp实现一个Client
 class WebsocketClient {
 public:
     WebsocketClient() {
+        _init_flag = false;
+
         // WebsocketClient初始化
         m_endpoint.set_access_channels(websocketpp::log::alevel::none);
         m_endpoint.set_error_channels(websocketpp::log::elevel::info);
@@ -129,7 +142,7 @@ public:
         data["ak"] = AK;
         // entity_id是每个终端对唯一标识，服务端会根据此id建立服务端对ssesion
         // 如果两个终端的entity_id重复，后上线对终端会将之前的踢下线
-        data["entity_id"] = "abcdefg";  
+        data["entity_id"] = ENTITY_ID;  
 
         j["data"] = data;  
 
@@ -159,6 +172,27 @@ public:
         _init_flag = false;
         m_endpoint.close(hdl, websocketpp::close::status::abnormal_close, "connection close");
         std::cout << "close connection" << std::endl;
+    }
+
+    // @brief 设置路线规划服务返回到导航路线
+
+
+    // @brief 检查连接是否建立
+    bool is_open() {
+        if (!_init_flag.load()) {
+            std::cout << "connection not established, ignore this message" << std::endl;
+            return false;
+        }
+
+        // 检查连接是否是open状态
+        client::connection_ptr con = m_endpoint.get_con_from_hdl(m_hdl);
+
+        if (con->get_state() != websocketpp::session::state::open) {
+            std::cout << "connection is " << con->get_state() << ", not ready" << std::endl;
+            return false;
+        }
+        
+        return true;
     }
 
 private:
@@ -193,18 +227,107 @@ private:
 
     // 建立连接并鉴权通过后才能向服务端上报位置数据，
     // 该变量用于标识是否完成这些动作
-    std::atomic<bool> _init_flag = false;
+    std::atomic<bool> _init_flag;
 };
+
+void set_route(std::weak_ptr<WebsocketClient>& client, int64_t& msgid) {
+    // 如果有路线，先设置路线，要注意模拟测试时轨迹点一定要在路线上，否则会导致无数据下发
+    if (ROUTE_TYPE == 2) {
+        std::ifstream infile;
+        infile.open(CASE + "_route");
+
+        if (!infile) {
+            std::cout << "file route.json read failed" << std::endl;
+            return;
+        }
+
+        std::string route_message((std::istreambuf_iterator<char>(infile)), std::istreambuf_iterator<char>());
+        json data = json::parse(route_message);
+
+        auto now = std::chrono::system_clock::now();
+        auto duration = now.time_since_epoch();
+        auto milliseconds = std::chrono::duration_cast<std::chrono::milliseconds>(duration);
+        json j;  
+        j["id"] = msgid++;  
+        j["qt"] = "horizon";  
+        j["ver"] = "1.0";  
+        j["prt"] = 1;  
+        j["enc"] = 1;  
+        j["ts"] = milliseconds.count();
+
+        data["route"]["type"] = 2;
+        json field;
+        // field.push_back("link");
+        field.push_back("slope");
+
+        data["route"]["route_rsp_field"] = field;
+        j["data"] = data;
+
+        // 向服务端上报路线
+        if (!client.expired()) {
+            std::string message = j.dump();
+            client.lock()->send(message);
+
+            auto now = std::chrono::system_clock::now();
+            time_t now_c = std::chrono::system_clock::to_time_t(now);
+            std::cout << std::put_time(std::localtime(&now_c), "%Y-%m-%d %H:%M:%S") << " send " << message << std::endl;
+        } else {
+            std::cout << "endpoint expired" << std::endl;
+        }
+    } else if (ROUTE_TYPE == 1) {
+        auto now = std::chrono::system_clock::now();
+        auto duration = now.time_since_epoch();
+        auto milliseconds = std::chrono::duration_cast<std::chrono::milliseconds>(duration);
+        json j;  
+        j["id"] = msgid++;  
+        j["qt"] = "horizon";  
+        j["ver"] = "1.0";  
+        j["prt"] = 1;  
+        j["enc"] = 1;  
+        j["ts"] = milliseconds.count();
+
+        json route_info;
+        route_info["type"] = 1;
+
+        json data;
+        data["route"] = route_info;  
+
+        j["data"] = data;
+
+        // 向服务端上报
+        if (!client.expired()) {
+            std::string message = j.dump();
+            client.lock()->send(message);
+
+            auto now = std::chrono::system_clock::now();
+            time_t now_c = std::chrono::system_clock::to_time_t(now);
+            std::cout << std::put_time(std::localtime(&now_c), "%Y-%m-%d %H:%M:%S") << " send " << message << std::endl;
+        } else {
+            std::cout << "endpoint expired" << std::endl;
+        }
+    }
+    
+    return;
+}
 
 void gps_worker(std::weak_ptr<WebsocketClient> client) {
     std::cout << "start gps_worker" << std::endl;
-    
+
     // 假设gps坐标已经录制好，并存放在case.csv文件中
     // 从case.csv文件读取坐标并进行回放
-    std::ifstream in_loc_stream("case.csv");
+    std::ifstream in_loc_stream(CASE + "_case");
 
     int64_t msgid = 0;
     std::string line;
+
+    while (!client.lock()->is_open()) {
+        std::cout << "connection not establish, waiting 1s..." << std::endl;
+        sleep(1);
+    }
+    
+    // 设置导航态、巡航态
+    set_route(client, msgid);
+    
     while (getline(in_loc_stream, line)) {
         // 按","对字符串进行分割
         std::stringstream ss(line);
@@ -249,12 +372,15 @@ void gps_worker(std::weak_ptr<WebsocketClient> client) {
         // 向服务端上报位置
         if (!client.expired()) {
             client.lock()->send(message);
-            // std::cout << "send " << message << std::endl;
+
+            auto now = std::chrono::system_clock::now();
+            time_t now_c = std::chrono::system_clock::to_time_t(now);
+            std::cout << std::put_time(std::localtime(&now_c), "%Y-%m-%d %H:%M:%S") << " send " << message << std::endl;
         } else {
             std::cout << "endpoint expired" << std::endl;
         }
 
-        sleep(1);
+        usleep(950000);
     }
 }
 
@@ -278,6 +404,9 @@ void client_worker(std::shared_ptr<WebsocketClient> endpoint_ptr) {
 }
 
 int main(int argc, char* argv[]) {
+    ENTITY_ID = std::string(argv[1]);
+    CASE = std::string(argv[2]);
+
     // 创建一个WebsocketClient对象 
     std::shared_ptr<WebsocketClient> endpoint_ptr = std::make_shared<WebsocketClient>();
     std::weak_ptr<WebsocketClient> w_endpoint_ptr(endpoint_ptr);
