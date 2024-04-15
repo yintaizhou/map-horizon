@@ -29,7 +29,6 @@ typedef client::connection_ptr connection_ptr;
 
 // 您需要通过百度地图开放平台官网申请ak（https://lbs.baidu.com/apiconsole/key#/home）
 // 申请服务端类型的ak，并提交工单，开通websocket长连接服务的试用权限
-// const std::string AK = "您的ak";
 const std::string AK = "您的ak";
 const std::string URI = "wss://api.map.baidu.com/websocket";
 
