@@ -1,0 +1,1 @@
+/opt/compiler/gcc-12/bin/g++      CMakeFiles/baidu_map_tls_client.dir/main.cpp.o  -o baidu_map_tls_client -rdynamic -lpthread -ldl -lssl -lcrypto 
