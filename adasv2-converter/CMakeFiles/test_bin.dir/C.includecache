@@ -1,0 +1,30 @@
+#IncludeRegexLine: ^[ 	]*#[ 	]*(include|import)[ 	]*[<"]([^">]+)([">])
+
+#IncludeRegexScan: ^.*$
+
+#IncludeRegexComplain: ^$
+
+#IncludeRegexTransform: 
+
+/home/chenshuaishuai01/baidu/openmap-api/horizon-provider-online-v2/cjson/cJSON.c
+string.h
+-
+stdio.h
+-
+math.h
+-
+stdlib.h
+-
+limits.h
+-
+ctype.h
+-
+locale.h
+-
+cJSON.h
+/home/chenshuaishuai01/baidu/openmap-api/horizon-provider-online-v2/cjson/cJSON.h
+
+/home/chenshuaishuai01/baidu/openmap-api/horizon-provider-online-v2/cjson/cJSON.h
+stddef.h
+-
+

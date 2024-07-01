@@ -1,0 +1,1 @@
+/opt/compiler/gcc-12/bin/g++      CMakeFiles/test_bin.dir/src/adas/v2/adas_v2_utility.cc.o CMakeFiles/test_bin.dir/src/adas/v2/adas_v2_protocol.cc.o CMakeFiles/test_bin.dir/cjson/cJSON.c.o CMakeFiles/test_bin.dir/test/main.cpp.o  -o test_bin -rdynamic -lpthread 
