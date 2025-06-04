@@ -3,4 +3,4 @@
 2. 执行camke ./
 3. 在main.cpp中设置好ak
 4. 执行make
-5. 编译成功后，执行./baidu_map_client entity_id case文件
+5. 编译成功后，执行./baidu_map_client entity_id case，例如./baidu_map_client my_entity_0 shanghai_gaosu_cruise_case.jsonl
